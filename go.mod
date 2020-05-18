@@ -19,7 +19,7 @@ require (
 	github.com/lucas-clemente/quic-go v0.15.7
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/naoina/toml v0.1.1
-	github.com/smallstep/certificates v0.15.0-rc.1.0.20200506212953-e855707dc274
+	github.com/smallstep/certificates v0.15.0-rc.1.0.20200515004001-ae15573f9326
 	github.com/smallstep/cli v0.14.3
 	github.com/smallstep/nosql v0.3.0
 	github.com/smallstep/truststore v0.9.5
@@ -31,5 +31,10 @@ require (
 	google.golang.org/genproto v0.0.0-20200413115906-b5235f65be36
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v2 v2.3.0
-	howett.net/plist v0.0.0-20200225050739-77e249a2e2ba // indirect
 )
+
+replace github.com/smallstep/cli v0.14.3 => ../../smallstep/cli
+
+replace github.com/smallstep/certificates v0.15.0-rc.1.0.20200515004001-ae15573f9326 => ../../smallstep/certificates
+
+replace github.com/smallstep/nosql v0.3.0 => ../../smallstep/nosql
