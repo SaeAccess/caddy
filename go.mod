@@ -33,8 +33,8 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 )
 
-replace github.com/smallstep/cli v0.14.3 => ../../smallstep/cli
+replace github.com/smallstep/cli => github.com/SaeAccess/cli v0.14.3
 
-replace github.com/smallstep/certificates v0.15.0-rc.1.0.20200515004001-ae15573f9326 => ../../smallstep/certificates
+replace github.com/smallstep/certificates => github.com/SaeAccess/certificates v0.15.0-rc.1.0.20200515004001-ae15573f9326
 
-replace github.com/smallstep/nosql v0.3.0 => ../../smallstep/nosql
+replace github.com/smallstep/nosql => github.com/SaeAccess/nosql v0.3.0
