@@ -103,6 +103,13 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		var network, scheme, host, port string
 
 		if strings.Contains(upstreamAddr, "://") {
+			// we get a parsing error if a placeholder is specified
+			// so we return a more user-friendly error message instead
+			// to explain what to do instead
+			if strings.Contains(upstreamAddr, "{") {
+				return "", d.Err("due to parsing difficulties, placeholders are not allowed when an upstream address contains a scheme")
+			}
+
 			toURL, err := url.Parse(upstreamAddr)
 			if err != nil {
 				return "", d.Errf("parsing upstream URL: %v", err)
@@ -554,7 +561,9 @@ func (h *Handler) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 		} else if commonScheme == "https" {
 			return d.Errf("upstreams are configured for HTTPS but transport module does not support TLS: %T", transport)
 		}
-		if !reflect.DeepEqual(transport, reflect.New(reflect.TypeOf(transport).Elem()).Interface()) {
+
+		// no need to encode empty default transport
+		if !reflect.DeepEqual(transport, new(HTTPTransport)) {
 			h.TransportRaw = caddyconfig.JSONModuleObject(transport, "protocol", transportModuleName, nil)
 		}
 	}
@@ -612,15 +621,19 @@ func (h *HTTPTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				h.DialTimeout = caddy.Duration(dur)
 
 			case "tls_client_auth":
-				args := d.RemainingArgs()
-				if len(args) != 2 {
-					return d.ArgErr()
-				}
 				if h.TLS == nil {
 					h.TLS = new(TLSConfig)
 				}
-				h.TLS.ClientCertificateFile = args[0]
-				h.TLS.ClientCertificateKeyFile = args[1]
+				args := d.RemainingArgs()
+				switch len(args) {
+				case 1:
+					h.TLS.ClientCertificateAutomate = args[0]
+				case 2:
+					h.TLS.ClientCertificateFile = args[0]
+					h.TLS.ClientCertificateKeyFile = args[1]
+				default:
+					return d.ArgErr()
+				}
 
 			case "tls":
 				if h.TLS == nil {
@@ -657,7 +670,6 @@ func (h *HTTPTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if h.TLS == nil {
 					h.TLS = new(TLSConfig)
 				}
-
 				h.TLS.RootCAPEMFiles = args
 
 			case "tls_server_name":
@@ -667,7 +679,6 @@ func (h *HTTPTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if h.TLS == nil {
 					h.TLS = new(TLSConfig)
 				}
-
 				h.TLS.ServerName = d.Val()
 
 			case "keepalive":
@@ -706,6 +717,14 @@ func (h *HTTPTransport) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				h.Versions = d.RemainingArgs()
 				if len(h.Versions) == 0 {
 					return d.ArgErr()
+				}
+
+			case "compression":
+				if d.NextArg() {
+					if d.Val() == "off" {
+						var disable bool
+						h.Compression = &disable
+					}
 				}
 
 			default:

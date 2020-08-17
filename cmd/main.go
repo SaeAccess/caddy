@@ -51,8 +51,6 @@ func init() {
 // Main implements the main function of the caddy command.
 // Call this if Caddy is to be the main() if your program.
 func Main() {
-	caddy.TrapSignals()
-
 	switch len(os.Args) {
 	case 0:
 		fmt.Printf("[FATAL] no arguments provided by OS; args[0] must be command\n")
@@ -412,6 +410,7 @@ func printEnvironment() {
 	fmt.Printf("caddy.AppDataDir=%s\n", caddy.AppDataDir())
 	fmt.Printf("caddy.AppConfigDir=%s\n", caddy.AppConfigDir())
 	fmt.Printf("caddy.ConfigAutosavePath=%s\n", caddy.ConfigAutosavePath)
+	fmt.Printf("caddy.Version=%s\n", caddy.GoModule().Version)
 	fmt.Printf("runtime.GOOS=%s\n", runtime.GOOS)
 	fmt.Printf("runtime.GOARCH=%s\n", runtime.GOARCH)
 	fmt.Printf("runtime.Compiler=%s\n", runtime.Compiler)

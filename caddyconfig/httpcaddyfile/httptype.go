@@ -54,6 +54,9 @@ func (st ServerType) Setup(inputServerBlocks []caddyfile.ServerBlock,
 	originalServerBlocks := make([]serverBlock, 0, len(inputServerBlocks))
 	for i, sblock := range inputServerBlocks {
 		for j, k := range sblock.Keys {
+			if j == 0 && strings.HasPrefix(k, "@") {
+				return nil, warnings, fmt.Errorf("cannot define a matcher outside of a site block: '%s'", k)
+			}
 			if _, ok := sbKeys[k]; ok {
 				return nil, warnings, fmt.Errorf("duplicate site address not allowed: '%s' in %v (site block %d, key %d)", k, sblock.Keys, i, j)
 			}
@@ -258,12 +261,8 @@ func (st ServerType) Setup(inputServerBlocks []caddyfile.ServerBlock,
 			storageCvtr.(caddy.Module).CaddyModule().ID.Name(),
 			&warnings)
 	}
-	if adminConfig, ok := options["admin"].(string); ok && adminConfig != "" {
-		if adminConfig == "off" {
-			cfg.Admin = &caddy.AdminConfig{Disabled: true}
-		} else {
-			cfg.Admin = &caddy.AdminConfig{Listen: adminConfig}
-		}
+	if adminConfig, ok := options["admin"].(*caddy.AdminConfig); ok && adminConfig != nil {
+		cfg.Admin = adminConfig
 	}
 	if len(customLogs) > 0 {
 		if cfg.Logging == nil {
@@ -343,10 +342,25 @@ func (st *ServerType) serversFromPairings(
 	if hsp, ok := options["https_port"].(int); ok {
 		httpsPort = strconv.Itoa(hsp)
 	}
+	autoHTTPS := "on"
+	if ah, ok := options["auto_https"].(string); ok {
+		autoHTTPS = ah
+	}
 
 	for i, p := range pairings {
 		srv := &caddyhttp.Server{
 			Listen: p.addresses,
+		}
+
+		// handle the auto_https global option
+		if autoHTTPS != "on" {
+			srv.AutoHTTPS = new(caddyhttp.AutoHTTPSConfig)
+			if autoHTTPS == "off" {
+				srv.AutoHTTPS.Disabled = true
+			}
+			if autoHTTPS == "disable_redirects" {
+				srv.AutoHTTPS.DisableRedir = true
+			}
 		}
 
 		// sort server blocks by their keys; this is important because
@@ -359,7 +373,11 @@ func (st *ServerType) serversFromPairings(
 			// but I don't expect many blocks will have THAT many keys...
 			var iLongestPath, jLongestPath string
 			var iLongestHost, jLongestHost string
+			var iWildcardHost, jWildcardHost bool
 			for _, addr := range p.serverBlocks[i].keys {
+				if strings.Contains(addr.Host, "*.") {
+					iWildcardHost = true
+				}
 				if specificity(addr.Host) > specificity(iLongestHost) {
 					iLongestHost = addr.Host
 				}
@@ -368,12 +386,26 @@ func (st *ServerType) serversFromPairings(
 				}
 			}
 			for _, addr := range p.serverBlocks[j].keys {
+				if strings.Contains(addr.Host, "*.") {
+					jWildcardHost = true
+				}
 				if specificity(addr.Host) > specificity(jLongestHost) {
 					jLongestHost = addr.Host
 				}
 				if specificity(addr.Path) > specificity(jLongestPath) {
 					jLongestPath = addr.Path
 				}
+			}
+			if specificity(jLongestHost) == 0 {
+				// catch-all blocks (blocks with no hostname) should always go
+				// last, even after blocks with wildcard hosts
+				return true
+			}
+			if iWildcardHost != jWildcardHost {
+				// site blocks that have a key with a wildcard in the hostname
+				// must always be less specific than blocks without one; see
+				// https://github.com/caddyserver/caddy/issues/3410
+				return jWildcardHost && !iWildcardHost
 			}
 			if specificity(iLongestHost) == specificity(jLongestHost) {
 				return len(iLongestPath) > len(jLongestPath)
@@ -382,7 +414,7 @@ func (st *ServerType) serversFromPairings(
 		})
 
 		var hasCatchAllTLSConnPolicy, addressQualifiesForTLS bool
-		autoHTTPSWillAddConnPolicy := true
+		autoHTTPSWillAddConnPolicy := autoHTTPS != "off"
 
 		// create a subroute for each site in the server block
 		for _, sblock := range p.serverBlocks {
@@ -445,6 +477,20 @@ func (st *ServerType) serversFromPairings(
 				// may not need to add one for this server
 				autoHTTPSWillAddConnPolicy = autoHTTPSWillAddConnPolicy &&
 					(addr.Port == httpsPort || (addr.Port != httpPort && addr.Host != ""))
+			}
+
+			// Look for any config values that provide listener wrappers on the server block
+			for _, listenerConfig := range sblock.pile["listener_wrapper"] {
+				listenerWrapper, ok := listenerConfig.Value.(caddy.ListenerWrapper)
+				if !ok {
+					return nil, fmt.Errorf("config for a listener wrapper did not provide a value that implements caddy.ListenerWrapper")
+				}
+				jsonListenerWrapper := caddyconfig.JSONModuleObject(
+					listenerWrapper,
+					"wrapper",
+					listenerWrapper.(caddy.Module).CaddyModule().ID.Name(),
+					warnings)
+				srv.ListenerWrappersRaw = append(srv.ListenerWrappersRaw, jsonListenerWrapper)
 			}
 
 			// set up each handler directive, making sure to honor directive order

@@ -78,7 +78,6 @@ type ActiveHealthChecks struct {
 	// body of a healthy backend.
 	ExpectBody string `json:"expect_body,omitempty"`
 
-	stopChan   chan struct{}
 	httpClient *http.Client
 	bodyRegexp *regexp.Regexp
 	logger     *zap.Logger
@@ -137,8 +136,7 @@ func (h *Handler) activeHealthChecker() {
 		select {
 		case <-ticker.C:
 			h.doActiveHealthCheckForAllHosts()
-		case <-h.HealthChecks.Active.stopChan:
-			// TODO: consider using a Context for cancellation instead
+		case <-h.ctx.Done():
 			ticker.Stop()
 			return
 		}
@@ -198,7 +196,7 @@ func (h *Handler) doActiveHealthCheckForAllHosts() {
 func (h *Handler) doActiveHealthCheck(dialInfo DialInfo, hostAddr string, host Host) error {
 	// create the URL for the request that acts as a health check
 	scheme := "http"
-	if ht, ok := h.Transport.(*http.Transport); ok && ht.TLSClientConfig != nil {
+	if ht, ok := h.Transport.(TLSTransport); ok && ht.TLSEnabled() {
 		// this is kind of a hacky way to know if we should use HTTPS, but whatever
 		scheme = "https"
 	}
@@ -341,8 +339,8 @@ func (h *Handler) countFailure(upstream *Upstream) {
 	if err != nil {
 		h.HealthChecks.Passive.logger.Error("could not count failure",
 			zap.String("host", upstream.Dial),
-			zap.Error(err),
-		)
+			zap.Error(err))
+		return
 	}
 
 	// forget it later
@@ -357,8 +355,7 @@ func (h *Handler) countFailure(upstream *Upstream) {
 		if err != nil {
 			h.HealthChecks.Passive.logger.Error("could not forget failure",
 				zap.String("host", upstream.Dial),
-				zap.Error(err),
-			)
+				zap.Error(err))
 		}
 	}(upstream.Host, failDuration)
 }

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -235,15 +236,20 @@ func replaceAdmin(cfg *Config) error {
 		MaxHeaderBytes:    1024 * 64,
 	}
 
-	go adminServer.Serve(ln)
+	adminLogger := Log().Named("admin")
+	go func() {
+		if err := adminServer.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+			adminLogger.Error("admin server shutdown for unknown reason", zap.Error(err))
+		}
+	}()
 
-	Log().Named("admin").Info("admin endpoint started",
+	adminLogger.Info("admin endpoint started",
 		zap.String("address", addr.String()),
 		zap.Bool("enforce_origin", adminConfig.EnforceOrigin),
 		zap.Strings("origins", handler.allowedOrigins))
 
 	if !handler.enforceHost {
-		Log().Named("admin").Warn("admin endpoint on open interface; host checking disabled",
+		adminLogger.Warn("admin endpoint on open interface; host checking disabled",
 			zap.String("address", addr.String()))
 	}
 
@@ -299,6 +305,14 @@ func (h adminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // be called more than once per request, for example if a request
 // is rewritten (i.e. internal redirect).
 func (h adminHandler) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(r.Header.Get("Upgrade"), "websocket") {
+		// I've never been able demonstrate a vulnerability myself, but apparently
+		// WebSocket connections originating from browsers aren't subject to CORS
+		// restrictions, so we'll just be on the safe side
+		h.handleError(w, r, fmt.Errorf("websocket connections aren't allowed"))
+		return
+	}
+
 	if h.enforceHost {
 		// DNS rebinding mitigation
 		err := h.checkHost(r)

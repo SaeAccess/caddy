@@ -9,6 +9,7 @@
 	}
 	acme_ca https://example.com
 	acme_ca_root /path/to/ca.crt
+
 	email test@example.com
 	admin off
 	on_demand_tls {
@@ -55,7 +56,8 @@
 					{
 						"issuer": {
 							"module": "internal"
-						}
+						},
+						"key_type": "ed25519"
 					}
 				],
 				"on_demand": {

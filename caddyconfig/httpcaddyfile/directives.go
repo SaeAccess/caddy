@@ -37,6 +37,7 @@ import (
 // The header directive goes second so that headers
 // can be manipulated before doing redirects.
 var directiveOrder = []string{
+	"map",
 	"root",
 
 	"header",
@@ -54,15 +55,18 @@ var directiveOrder = []string{
 	"encode",
 	"templates",
 
-	// special routing directives
+	// special routing & dispatching directives
 	"handle",
+	"handle_path",
 	"route",
+	"push",
 
 	// handlers that typically respond to requests
 	"respond",
 	"reverse_proxy",
 	"php_fastcgi",
 	"file_server",
+	"acme_server",
 }
 
 // directiveIsOrdered returns true if dir is
@@ -261,6 +265,75 @@ func (h Helper) NewBindAddresses(addrs []string) []ConfigValue {
 	return []ConfigValue{{Class: "bind", Value: addrs}}
 }
 
+// ParseSegmentAsSubroute parses the segment such that its subdirectives
+// are themselves treated as directives, from which a subroute is built
+// and returned.
+func ParseSegmentAsSubroute(h Helper) (caddyhttp.MiddlewareHandler, error) {
+	allResults, err := parseSegmentAsConfig(h)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildSubroute(allResults, h.groupCounter)
+}
+
+// parseSegmentAsConfig parses the segment such that its subdirectives
+// are themselves treated as directives, including named matcher definitions,
+// and the raw Config structs are returned.
+func parseSegmentAsConfig(h Helper) ([]ConfigValue, error) {
+	var allResults []ConfigValue
+
+	for h.Next() {
+		// slice the linear list of tokens into top-level segments
+		var segments []caddyfile.Segment
+		for nesting := h.Nesting(); h.NextBlock(nesting); {
+			segments = append(segments, h.NextSegment())
+		}
+
+		// copy existing matcher definitions so we can augment
+		// new ones that are defined only in this scope
+		matcherDefs := make(map[string]caddy.ModuleMap, len(h.matcherDefs))
+		for key, val := range h.matcherDefs {
+			matcherDefs[key] = val
+		}
+
+		// find and extract any embedded matcher definitions in this scope
+		for i, seg := range segments {
+			if strings.HasPrefix(seg.Directive(), matcherPrefix) {
+				err := parseMatcherDefinitions(caddyfile.NewDispenser(seg), matcherDefs)
+				if err != nil {
+					return nil, err
+				}
+				segments = append(segments[:i], segments[i+1:]...)
+			}
+		}
+
+		// with matchers ready to go, evaluate each directive's segment
+		for _, seg := range segments {
+			dir := seg.Directive()
+			dirFunc, ok := registeredDirectives[dir]
+			if !ok {
+				return nil, h.Errf("unrecognized directive: %s", dir)
+			}
+
+			subHelper := h
+			subHelper.Dispenser = caddyfile.NewDispenser(seg)
+			subHelper.matcherDefs = matcherDefs
+
+			results, err := dirFunc(subHelper)
+			if err != nil {
+				return nil, h.Errf("parsing caddyfile tokens for '%s': %v", dir, err)
+			}
+			for _, result := range results {
+				result.directive = dir
+				allResults = append(allResults, result)
+			}
+		}
+	}
+
+	return allResults, nil
+}
+
 // ConfigValue represents a value to be added to the final
 // configuration, or a value to be consulted when building
 // the final configuration.
@@ -325,65 +398,16 @@ func sortRoutes(routes []ConfigValue) {
 		if len(jPM) > 0 {
 			jPathLen = len(jPM[0])
 		}
+
+		// if both directives have no path matcher, use whichever one
+		// has any kind of matcher defined first.
+		if iPathLen == 0 && jPathLen == 0 {
+			return len(iRoute.MatcherSetsRaw) > 0 && len(jRoute.MatcherSetsRaw) == 0
+		}
+
+		// sort with the most-specific (longest) path first
 		return iPathLen > jPathLen
 	})
-}
-
-// parseSegmentAsSubroute parses the segment such that its subdirectives
-// are themselves treated as directives, from which a subroute is built
-// and returned.
-func parseSegmentAsSubroute(h Helper) (caddyhttp.MiddlewareHandler, error) {
-	var allResults []ConfigValue
-
-	for h.Next() {
-		// slice the linear list of tokens into top-level segments
-		var segments []caddyfile.Segment
-		for nesting := h.Nesting(); h.NextBlock(nesting); {
-			segments = append(segments, h.NextSegment())
-		}
-
-		// copy existing matcher definitions so we can augment
-		// new ones that are defined only in this scope
-		matcherDefs := make(map[string]caddy.ModuleMap, len(h.matcherDefs))
-		for key, val := range h.matcherDefs {
-			matcherDefs[key] = val
-		}
-
-		// find and extract any embedded matcher definitions in this scope
-		for i, seg := range segments {
-			if strings.HasPrefix(seg.Directive(), matcherPrefix) {
-				err := parseMatcherDefinitions(caddyfile.NewDispenser(seg), matcherDefs)
-				if err != nil {
-					return nil, err
-				}
-				segments = append(segments[:i], segments[i+1:]...)
-			}
-		}
-
-		// with matchers ready to go, evaluate each directive's segment
-		for _, seg := range segments {
-			dir := seg.Directive()
-			dirFunc, ok := registeredDirectives[dir]
-			if !ok {
-				return nil, h.Errf("unrecognized directive: %s", dir)
-			}
-
-			subHelper := h
-			subHelper.Dispenser = caddyfile.NewDispenser(seg)
-			subHelper.matcherDefs = matcherDefs
-
-			results, err := dirFunc(subHelper)
-			if err != nil {
-				return nil, h.Errf("parsing caddyfile tokens for '%s': %v", dir, err)
-			}
-			for _, result := range results {
-				result.directive = dir
-				allResults = append(allResults, result)
-			}
-		}
-	}
-
-	return buildSubroute(allResults, h.groupCounter)
 }
 
 // serverBlock pairs a Caddyfile server block with

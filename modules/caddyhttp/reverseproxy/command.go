@@ -55,7 +55,7 @@ from its original incoming value to the address of the upstream. (Otherwise, by
 default, all incoming headers are passed through unmodified.)
 `,
 		Flags: func() *flag.FlagSet {
-			fs := flag.NewFlagSet("file-server", flag.ExitOnError)
+			fs := flag.NewFlagSet("reverse-proxy", flag.ExitOnError)
 			fs.String("from", "localhost", "Address on which to receive traffic")
 			fs.String("to", "", "Upstream address to which to to proxy traffic")
 			fs.Bool("change-host-header", false, "Set upstream Host header to address of upstream")
@@ -66,6 +66,8 @@ default, all incoming headers are passed through unmodified.)
 }
 
 func cmdReverseProxy(fs caddycmd.Flags) (int, error) {
+	caddy.TrapSignals()
+
 	from := fs.String("from")
 	to := fs.String("to")
 	changeHost := fs.Bool("change-host-header")
