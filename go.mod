@@ -20,6 +20,9 @@ require (
 	github.com/smallstep/certificates v0.15.4
 	github.com/smallstep/cli v0.15.2
 	github.com/smallstep/nosql v0.3.0 // cannot upgrade from v0.3.0 until protobuf warning is fixed
+	github.com/smallstep/certificates v0.14.4
+	github.com/smallstep/cli v0.14.3
+	github.com/smallstep/nosql v0.3.0
 	github.com/smallstep/truststore v0.9.6
 	github.com/yuin/goldmark v1.2.1
 	github.com/yuin/goldmark-highlighting v0.0.0-20200307114337-60d527fdb691
@@ -32,8 +35,8 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 )
 
-replace github.com/smallstep/cli => github.com/SaeAccess/cli v0.14.3
+replace github.com/smallstep/cli => github.com/SaeAccess/cli v0.0.0-20200819070139-265caa0ff0ac
 
-replace github.com/smallstep/certificates => github.com/SaeAccess/certificates v0.15.0-rc.1.0.20200515004001-ae15573f9326
+replace github.com/smallstep/certificates => github.com/SaeAccess/certificates v0.0.0-20200817080949-345af273632c
 
-replace github.com/smallstep/nosql => github.com/SaeAccess/nosql v0.3.0
+replace github.com/smallstep/nosql => github.com/SaeAccess/nosql v0.0.0-20200518183513-e7d90677937e
