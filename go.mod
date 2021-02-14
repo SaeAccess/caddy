@@ -16,10 +16,6 @@ require (
 	github.com/mholt/acmez v0.1.3
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/naoina/toml v0.1.1
-	github.com/prometheus/client_golang v1.9.0
-	github.com/smallstep/certificates v0.15.4
-	github.com/smallstep/cli v0.15.2
-	github.com/smallstep/nosql v0.3.0 // cannot upgrade from v0.3.0 until protobuf warning is fixed
 	github.com/smallstep/certificates v0.14.4
 	github.com/smallstep/cli v0.14.3
 	github.com/smallstep/nosql v0.3.0
